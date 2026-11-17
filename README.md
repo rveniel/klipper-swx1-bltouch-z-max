@@ -1,6 +1,6 @@
 # Klipper — Artillery Sidewinder X1 + BLTouch (Waggster mod, Z max)
 
-Configuration Klipper et stack Docker (Unraid) pour une Sidewinder X1 :
+Configuration Klipper et stack Docker Compose (Unraid) pour une Sidewinder X1 :
 
 - carte MKS Gen L (ATmega2560), drivers TMC2100 ;
 - sonde 3D Touch / BLTouch en montage **Waggster mod** : signal sur **Z max** (D19 / `PD2`), commande sur la broche servo (D11 / `PB5`) ;
@@ -13,50 +13,50 @@ Valeurs reprises de [rveniel/marlin-swx1](https://github.com/rveniel/marlin-swx1
 
 | Fichier | Rôle |
 |---|---|
-| `docker-compose.yaml` | La stack : Klipper, Moonraker, Mainsail, webcam, Traefik, outils firmware |
-| `.env.example` | Chemins et port à adapter (à copier en `.env`) |
+| `docker-compose.yaml` | La stack : Klipper, Moonraker, Mainsail, webcam, Traefik |
+| `.env.example` | Dossier, port, port série et webcam à adapter |
 | `config/printer.cfg` | La machine : moteurs, chauffe, sonde, maillage, écran |
 | `config/macros.cfg` | `PRINT_START`, `PRINT_END`, filament, pause/reprise/annulation |
 | `config/moonraker.conf` | Moonraker (sans systemd, réseaux privés uniquement, webcam) |
-| `firmware/build.config` | Configuration de compilation : atmega2560, 16 MHz, UART0, 250000 bauds |
+| `firmware/build.config` | Compilation du firmware : atmega2560, 16 MHz, UART0, 250000 bauds |
 
-## Installation sur Unraid
+Sur le serveur, **seuls `docker-compose.yaml` et `.env` sont nécessaires**.
+Au premier démarrage, le conteneur `init` télécharge les fichiers de `config/` et
+`firmware/` dans `STACK_DIR`. Il n'écrase jamais un fichier existant : ensuite,
+les configs vivent dans appdata et se modifient depuis Mainsail
+(onglet *Machine*).
 
-1. Cloner le repo dans appdata :
-   ```bash
-   cd /mnt/user/appdata
-   git clone https://github.com/rveniel/klipper-swx1-bltouch-z-max
-   cd klipper-swx1-bltouch-z-max
-   cp .env.example .env
-   ```
-2. Adapter `.env` : `STACK_DIR` (chemin absolu du clone), `HTTP_PORT`, `WEBCAM_DEVICE`.
-3. Renseigner le port série de la carte dans `config/printer.cfg`, section `[mcu]` :
+## Installation sur Unraid (plugin Docker Compose Manager)
+
+1. **Arrêter le conteneur OctoPrint** : il occupe le port série.
+2. Repérer la carte et la webcam (terminal Unraid) :
    ```bash
    ls /dev/serial/by-id/
+   ls /dev/v4l/by-id/
    ```
-4. **Arrêter le conteneur OctoPrint** : il occupe le port série.
-5. Flasher le firmware Klipper sur la carte (section suivante).
-6. Lancer la stack :
-   ```bash
-   docker compose up -d
-   ```
-   Avec le plugin *Docker Compose Manager*, créer une stack pointant sur ce dossier
-   (ou coller le compose et le `.env`), et activer l'autostart.
-7. Ouvrir `http://<ip-du-serveur>:8090`.
+3. Créer une stack, coller `docker-compose.yaml`, puis renseigner le `.env`
+   à partir de `.env.example` (`MCU_SERIAL`, `WEBCAM_DEVICE`, `HTTP_PORT`, `STACK_DIR`).
+4. Flasher le firmware Klipper sur la carte (section suivante).
+5. *Compose Up*, activer l'autostart, ouvrir `http://<ip-du-serveur>:8090`.
+
+`MCU_SERIAL` n'est appliqué qu'à la création de `printer.cfg`. Pour le changer
+ensuite, modifier la section `[mcu]` dans Mainsail.
 
 ## Firmware de la carte
 
-La carte doit être libre : arrêter Klipper avant de flasher.
+Depuis le terminal Unraid, carte libre (stack arrêtée ou conteneur Klipper stoppé).
+Lancer d'abord la stack une fois pour que `firmware/build.config` soit téléchargé.
 
 ```bash
-docker compose stop klipper
-docker compose run --rm tools "make"
-docker compose run --rm tools "make flash FLASH_DEVICE=/dev/serial/by-id/<ta-carte>"
-docker compose start klipper
+docker run --rm -it --privileged -v /dev:/dev \
+  -v /mnt/user/appdata/klipper-swx1/firmware/build.config:/opt/klipper/.config \
+  -v /mnt/user/appdata/klipper-swx1/firmware/out:/opt/klipper/out \
+  -w /opt/klipper --entrypoint bash mkuf/klipper:latest-tools \
+  -c "make && make flash FLASH_DEVICE=/dev/serial/by-id/<ta-carte>"
 ```
 
-`firmware/build.config` est déjà réglé pour la carte. Pour le modifier :
-`docker compose run --rm tools "make menuconfig"`.
+Pour modifier la configuration de compilation, remplacer la commande finale par
+`-c "make menuconfig"`.
 
 Retour à Marlin à tout moment : reflasher le firmware Digant 2.1.2 (variante
 `bltouch_waggster_mod_z_max_used`), le câblage est identique.
@@ -71,10 +71,11 @@ Retour à Marlin à tout moment : reflasher le firmware Digant 2.1.2 (variante
 6. Calibration de l'extrudeur, pressure advance, puis input shaping
    (ADXL345 USB, section commentée dans `printer.cfg`).
 
-Les CSV de résonance s'analysent avec le conteneur d'outils :
+Les CSV de `TEST_RESONANCES` arrivent dans `STACK_DIR/resonances`. Analyse :
 ```bash
-docker compose cp klipper:/tmp/resonances_x_<date>.csv ./resonances/
-docker compose run --rm tools "scripts/calibrate_shaper.py resonances/resonances_x_<date>.csv -o resonances/shaper_x.png"
+docker run --rm -v /mnt/user/appdata/klipper-swx1/resonances:/opt/klipper/resonances \
+  -w /opt/klipper --entrypoint bash mkuf/klipper:latest-tools \
+  -c "scripts/calibrate_shaper.py resonances/resonances_x_*.csv -o resonances/shaper_x.png"
 ```
 
 ## OrcaSlicer

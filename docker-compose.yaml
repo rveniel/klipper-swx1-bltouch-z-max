@@ -3,9 +3,10 @@
 #  Klipper + Moonraker + Mainsail + webcam, derrière Traefik.
 #  Adapté de prind (https://github.com/mkuf/prind), mêmes images.
 #
-#  Démarrage :   docker compose up -d
-#  Interface :   http://<ip-du-serveur>:HTTP_PORT
-#  Firmware :    docker compose run --rm tools "make"   (voir README)
+#  Seuls ce fichier et le .env sont nécessaires : les configs sont
+#  téléchargées dans STACK_DIR au premier démarrage, puis restent à toi.
+#  Interface :   http://<ip-du-serveur>:<HTTP_PORT>
+#  Firmware :    voir le README (commande docker run unique)
 # =====================================================================
 
 x-logging: &logging
@@ -17,15 +18,32 @@ x-logging: &logging
 
 services:
 
-  # Donne les dossiers à l'utilisateur 1000 (celui des images Klipper/Moonraker),
-  # puis s'arrête. Nécessaire sur Unraid où appdata appartient à nobody:users.
+  # Au premier démarrage : télécharge les configs par défaut depuis GitHub
+  # (sans jamais écraser un fichier existant), renseigne le port série,
+  # puis donne les dossiers à l'utilisateur 1000 des images Klipper/Moonraker.
   init:
-    image: busybox:latest
-    command: >
-      sh -c "mkdir -p /stack/gcodes /stack/logs /stack/database &&
-             chown -R 1000:1000 /stack/config /stack/gcodes /stack/logs /stack/database"
+    image: curlimages/curl:latest
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    environment:
+      REPO_RAW: https://raw.githubusercontent.com/rveniel/klipper-swx1-bltouch-z-max/${CONFIG_REF:-main}
+      MCU_SERIAL: ${MCU_SERIAL:-}
+    command:
+      - |
+        set -e
+        mkdir -p /stack/config /stack/gcodes /stack/logs /stack/database /stack/firmware /stack/resonances
+        for f in config/printer.cfg config/macros.cfg config/moonraker.conf firmware/build.config; do
+          if [ ! -f "/stack/$$f" ]; then
+            echo "Téléchargement de $$f"
+            curl -fsSL "$$REPO_RAW/$$f" -o "/stack/$$f"
+          fi
+        done
+        if [ -n "$$MCU_SERIAL" ]; then
+          sed -i "s#^serial: /dev/serial/by-id/CHANGEME#serial: $$MCU_SERIAL#" /stack/config/printer.cfg
+        fi
+        chown -R 1000:1000 /stack/config /stack/gcodes /stack/logs /stack/database /stack/resonances
     volumes:
-      - ${STACK_DIR:?définir STACK_DIR dans .env}:/stack
+      - ${STACK_DIR:-/mnt/user/appdata/klipper-swx1}:/stack
 
   klipper:
     image: mkuf/klipper:latest
@@ -44,9 +62,11 @@ services:
       -l printer_data/logs/klippy.log
     volumes:
       - /dev:/dev
-      - ${STACK_DIR:?définir STACK_DIR dans .env}/config:/opt/printer_data/config
-      - ${STACK_DIR:?définir STACK_DIR dans .env}/gcodes:/opt/printer_data/gcodes
-      - ${STACK_DIR:?définir STACK_DIR dans .env}/logs:/opt/printer_data/logs
+      - ${STACK_DIR:-/mnt/user/appdata/klipper-swx1}/config:/opt/printer_data/config
+      - ${STACK_DIR:-/mnt/user/appdata/klipper-swx1}/gcodes:/opt/printer_data/gcodes
+      - ${STACK_DIR:-/mnt/user/appdata/klipper-swx1}/logs:/opt/printer_data/logs
+      # Les CSV d'input shaping (TEST_RESONANCES) sont écrits dans /tmp
+      - ${STACK_DIR:-/mnt/user/appdata/klipper-swx1}/resonances:/tmp
       - run:/opt/printer_data/run
 
   moonraker:
@@ -61,10 +81,10 @@ services:
     volumes:
       - /dev/null:/opt/klipper/config/null
       - /dev/null:/opt/klipper/docs/null
-      - ${STACK_DIR:?définir STACK_DIR dans .env}/config:/opt/printer_data/config
-      - ${STACK_DIR:?définir STACK_DIR dans .env}/gcodes:/opt/printer_data/gcodes
-      - ${STACK_DIR:?définir STACK_DIR dans .env}/logs:/opt/printer_data/logs
-      - ${STACK_DIR:?définir STACK_DIR dans .env}/database:/opt/printer_data/database
+      - ${STACK_DIR:-/mnt/user/appdata/klipper-swx1}/config:/opt/printer_data/config
+      - ${STACK_DIR:-/mnt/user/appdata/klipper-swx1}/gcodes:/opt/printer_data/gcodes
+      - ${STACK_DIR:-/mnt/user/appdata/klipper-swx1}/logs:/opt/printer_data/logs
+      - ${STACK_DIR:-/mnt/user/appdata/klipper-swx1}/database:/opt/printer_data/database
       - run:/opt/printer_data/run
     labels:
       traefik.enable: true
@@ -118,22 +138,6 @@ services:
       - "${HTTP_PORT:-8090}:80"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-
-  # Outils de compilation/flash du firmware et d'analyse d'input shaping.
-  # Jamais démarré par "up" ; s'utilise avec "docker compose run --rm tools ...".
-  tools:
-    image: mkuf/klipper:latest-tools
-    profiles:
-      - tools
-    tty: true
-    privileged: true
-    entrypoint: bash -c
-    working_dir: /opt/klipper
-    volumes:
-      - /dev:/dev
-      - ${STACK_DIR:?définir STACK_DIR dans .env}/firmware/build.config:/opt/klipper/.config
-      - ${STACK_DIR:?définir STACK_DIR dans .env}/firmware/out:/opt/klipper/out
-      - ${STACK_DIR:?définir STACK_DIR dans .env}/resonances:/opt/klipper/resonances
 
 volumes:
   run:
