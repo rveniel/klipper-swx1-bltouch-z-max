@@ -48,15 +48,16 @@ Depuis le terminal Unraid, carte libre (stack arrêtée ou conteneur Klipper sto
 Lancer d'abord la stack une fois pour que `firmware/build.config` soit téléchargé.
 
 ```bash
-docker run --rm -it --privileged -v /dev:/dev \
-  -v /mnt/user/appdata/klipper-swx1/firmware/build.config:/opt/klipper/.config \
-  -v /mnt/user/appdata/klipper-swx1/firmware/out:/opt/klipper/out \
-  -w /opt/klipper --entrypoint bash mkuf/klipper:latest-tools \
-  -c "make && make flash FLASH_DEVICE=/dev/serial/by-id/<ta-carte>"
+docker run --rm -it --privileged -v /dev:/dev -v /mnt/user/appdata/klipper-swx1/firmware:/fw -w /opt/klipper --entrypoint bash mkuf/klipper:latest-tools -c "cp /fw/build.config .config && make olddefconfig && make && cp .config /fw/build.config && make flash FLASH_DEVICE=/dev/serial/by-id/<ta-carte>"
 ```
 
-Pour modifier la configuration de compilation, remplacer la commande finale par
-`-c "make menuconfig"`.
+(adapter `/mnt/user/appdata/klipper-swx1` à ton `STACK_DIR`). `make olddefconfig`
+met `build.config` à niveau quand Klipper ajoute de nouvelles options, puis la
+version à jour est réenregistrée dans `firmware/`. Un flash réussi se termine par
+`avrdude done. Thank you.`
+
+Pour modifier la configuration de compilation, remplacer `make olddefconfig`
+par `make menuconfig`.
 
 Retour à Marlin à tout moment : reflasher le firmware Digant 2.1.2 (variante
 `bltouch_waggster_mod_z_max_used`), le câblage est identique.
