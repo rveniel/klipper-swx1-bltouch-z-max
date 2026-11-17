@@ -121,6 +121,10 @@ services:
       --desired-fps=30
     devices:
       - ${WEBCAM_DEVICE:-/dev/video0}:/dev/webcam
+    # ustreamer ne tourne pas en root : il doit être membre du groupe
+    # qui possède la webcam sur l'hôte (voir VIDEO_GID dans .env).
+    group_add:
+      - "${VIDEO_GID:-18}"
     labels:
       traefik.enable: true
       traefik.http.services.webcam.loadbalancer.server.port: 8080
