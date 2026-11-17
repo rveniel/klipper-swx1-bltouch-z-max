@@ -51,6 +51,10 @@ services:
     # Accès à /dev complet : le chemin /dev/serial/by-id reste valable
     # après une déconnexion/reconnexion USB de la carte.
     privileged: true
+    # Klipper tourne en uid 1000 : il doit être membre du groupe qui possède
+    # le port série sur l'hôte (voir SERIAL_GID dans .env).
+    group_add:
+      - "${SERIAL_GID:-16}"
     <<: *logging
     depends_on:
       init:
