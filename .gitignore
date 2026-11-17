@@ -1,0 +1,6 @@
+.env
+firmware/out/
+resonances/
+gcodes/
+logs/
+database/

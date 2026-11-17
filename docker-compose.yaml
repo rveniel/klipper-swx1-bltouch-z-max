@@ -1,0 +1,142 @@
+# =====================================================================
+#  Stack Klipper pour Sidewinder X1 — Unraid
+#  Klipper + Moonraker + Mainsail + webcam, derrière Traefik.
+#  Adapté de prind (https://github.com/mkuf/prind), mêmes images.
+#
+#  Démarrage :   docker compose up -d
+#  Interface :   http://<ip-du-serveur>:HTTP_PORT
+#  Firmware :    docker compose run --rm tools "make"   (voir README)
+# =====================================================================
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+
+  # Donne les dossiers à l'utilisateur 1000 (celui des images Klipper/Moonraker),
+  # puis s'arrête. Nécessaire sur Unraid où appdata appartient à nobody:users.
+  init:
+    image: busybox:latest
+    command: >
+      sh -c "mkdir -p /stack/gcodes /stack/logs /stack/database &&
+             chown -R 1000:1000 /stack/config /stack/gcodes /stack/logs /stack/database"
+    volumes:
+      - ${STACK_DIR:?définir STACK_DIR dans .env}:/stack
+
+  klipper:
+    image: mkuf/klipper:latest
+    restart: unless-stopped
+    # Accès à /dev complet : le chemin /dev/serial/by-id reste valable
+    # après une déconnexion/reconnexion USB de la carte.
+    privileged: true
+    <<: *logging
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    command: >
+      -I printer_data/run/klipper.tty
+      -a printer_data/run/klipper.sock
+      printer_data/config/printer.cfg
+      -l printer_data/logs/klippy.log
+    volumes:
+      - /dev:/dev
+      - ${STACK_DIR:?définir STACK_DIR dans .env}/config:/opt/printer_data/config
+      - ${STACK_DIR:?définir STACK_DIR dans .env}/gcodes:/opt/printer_data/gcodes
+      - ${STACK_DIR:?définir STACK_DIR dans .env}/logs:/opt/printer_data/logs
+      - run:/opt/printer_data/run
+
+  moonraker:
+    image: mkuf/moonraker:latest
+    restart: unless-stopped
+    <<: *logging
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      klipper:
+        condition: service_started
+    volumes:
+      - /dev/null:/opt/klipper/config/null
+      - /dev/null:/opt/klipper/docs/null
+      - ${STACK_DIR:?définir STACK_DIR dans .env}/config:/opt/printer_data/config
+      - ${STACK_DIR:?définir STACK_DIR dans .env}/gcodes:/opt/printer_data/gcodes
+      - ${STACK_DIR:?définir STACK_DIR dans .env}/logs:/opt/printer_data/logs
+      - ${STACK_DIR:?définir STACK_DIR dans .env}/database:/opt/printer_data/database
+      - run:/opt/printer_data/run
+    labels:
+      traefik.enable: true
+      traefik.http.services.moonraker.loadbalancer.server.port: 7125
+      traefik.http.routers.moonraker.rule: PathRegexp(`^/(websocket|printer|api|access|machine|server)`)
+      traefik.http.routers.moonraker.entrypoints: web
+
+  mainsail:
+    image: ghcr.io/mainsail-crew/mainsail:edge
+    restart: unless-stopped
+    <<: *logging
+    labels:
+      traefik.enable: true
+      traefik.http.services.mainsail.loadbalancer.server.port: 80
+      traefik.http.routers.mainsail.rule: PathPrefix(`/`)
+      traefik.http.routers.mainsail.entrypoints: web
+
+  # Webcam USB (ustreamer). Retirer ce service si aucune webcam n'est branchée.
+  webcam:
+    image: mkuf/ustreamer:latest
+    restart: unless-stopped
+    <<: *logging
+    command: >
+      --host=0.0.0.0
+      --port=8080
+      --slowdown
+      --device=/dev/webcam
+      --resolution=1280x720
+      --format=MJPEG
+      --desired-fps=30
+    devices:
+      - ${WEBCAM_DEVICE:-/dev/video0}:/dev/webcam
+    labels:
+      traefik.enable: true
+      traefik.http.services.webcam.loadbalancer.server.port: 8080
+      traefik.http.routers.webcam.rule: PathPrefix(`/webcam`)
+      traefik.http.routers.webcam.entrypoints: web
+      traefik.http.middlewares.webcam.stripprefix.prefixes: /webcam
+      traefik.http.routers.webcam.middlewares: webcam
+
+  # Point d'entrée unique : Mainsail, l'API Moonraker et la webcam sur le même port.
+  traefik:
+    image: traefik:3.7
+    restart: unless-stopped
+    <<: *logging
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "${HTTP_PORT:-8090}:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # Outils de compilation/flash du firmware et d'analyse d'input shaping.
+  # Jamais démarré par "up" ; s'utilise avec "docker compose run --rm tools ...".
+  tools:
+    image: mkuf/klipper:latest-tools
+    profiles:
+      - tools
+    tty: true
+    privileged: true
+    entrypoint: bash -c
+    working_dir: /opt/klipper
+    volumes:
+      - /dev:/dev
+      - ${STACK_DIR:?définir STACK_DIR dans .env}/firmware/build.config:/opt/klipper/.config
+      - ${STACK_DIR:?définir STACK_DIR dans .env}/firmware/out:/opt/klipper/out
+      - ${STACK_DIR:?définir STACK_DIR dans .env}/resonances:/opt/klipper/resonances
+
+volumes:
+  run:
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
