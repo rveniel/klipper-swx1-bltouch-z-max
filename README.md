@@ -16,7 +16,8 @@ Valeurs reprises de [rveniel/marlin-swx1](https://github.com/rveniel/marlin-swx1
 | `docker-compose.yaml` | La stack : Klipper, Moonraker, Mainsail, webcam, Traefik |
 | `.env.example` | Dossier, port, port série et webcam à adapter |
 | `config/printer.cfg` | La machine : moteurs, chauffe, sonde, maillage, écran |
-| `config/macros.cfg` | `PRINT_START`, `PRINT_END`, filament, pause/reprise/annulation |
+| `config/macros.cfg` | `PRINT_START` (purge adaptative), `PRINT_END`, filament, `M600`, réglages pause/annulation |
+| `config/mainsail.cfg` | Macros officielles Mainsail : `PAUSE`, `RESUME`, `CANCEL_PRINT` ([mainsail-config](https://github.com/mainsail-crew/mainsail-config), GPLv3) |
 | `config/moonraker.conf` | Moonraker (sans systemd, réseaux privés uniquement, webcam) |
 | `firmware/build.config` | Compilation du firmware : atmega2560, 16 MHz, UART0, 250000 bauds |
 
@@ -94,6 +95,7 @@ Profil d'imprimante :
 - G-code avant changement de couche : `SET_PRINT_STATS_INFO CURRENT_LAYER={layer_num + 1}`
 - G-code après changement de couche : vide.
 - G-code de pause : `PAUSE` (le `M0` de Marlin n'existe pas dans Klipper).
+- G-code de changement de filament : `M600` (pause buse à 50 mm minimum, déchargement ; puis `LOAD_FILAMENT` et `RESUME`).
 - Connexion : *Octo/Klipper*, `http://<ip-du-serveur>:8090`, sans clé API.
 
 Profil d'impression, onglet *Others* : activer **Label objects** et **Exclude objects**

@@ -32,7 +32,7 @@ services:
       - |
         set -e
         mkdir -p /stack/config /stack/gcodes /stack/logs /stack/database /stack/firmware /stack/resonances
-        for f in config/printer.cfg config/macros.cfg config/moonraker.conf firmware/build.config; do
+        for f in config/printer.cfg config/macros.cfg config/mainsail.cfg config/moonraker.conf firmware/build.config; do
           if [ ! -f "/stack/$$f" ]; then
             echo "Téléchargement de $$f"
             curl -fsSL "$$REPO_RAW/$$f" -o "/stack/$$f"
