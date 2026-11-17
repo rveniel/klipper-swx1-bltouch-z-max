@@ -82,10 +82,22 @@ est dans **[docs/premier-demarrage.md](docs/premier-demarrage.md)**. En résumé
 
 ## OrcaSlicer
 
-- Hôte d'impression : type **Klipper**, adresse `http://<ip-du-serveur>:8090`.
-- G-code de démarrage : `PRINT_START BED_TEMP=[bed_temperature_initial_layer_single] EXTRUDER_TEMP=[nozzle_temperature_initial_layer]`
+Profil d'imprimante :
+
+- *G-code flavor* : **Klipper** ; *Machine limits usage* : **Use for time estimate**.
+- G-code de démarrage :
+  ```
+  SET_PRINT_STATS_INFO TOTAL_LAYER_COUNT=[total_layer_count]
+  PRINT_START BED_TEMP=[bed_temperature_initial_layer_single] EXTRUDER_TEMP=[nozzle_temperature_initial_layer]
+  ```
 - G-code de fin : `PRINT_END`
-- Activer « Label objects » pour le maillage adaptatif.
+- G-code avant changement de couche : `SET_PRINT_STATS_INFO CURRENT_LAYER={layer_num + 1}`
+- G-code après changement de couche : vide.
+- G-code de pause : `PAUSE` (le `M0` de Marlin n'existe pas dans Klipper).
+- Connexion : *Octo/Klipper*, `http://<ip-du-serveur>:8090`, sans clé API.
+
+Profil d'impression, onglet *Others* : activer **Label objects** et **Exclude objects**
+(maillage adaptatif et annulation d'un objet en cours d'impression).
 
 ## Sécurité
 
