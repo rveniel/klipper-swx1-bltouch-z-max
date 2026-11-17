@@ -63,20 +63,21 @@ Retour à Marlin à tout moment : reflasher le firmware Digant 2.1.2 (variante
 
 ## Premier démarrage
 
-1. `QUERY_ENDSTOPS` : X et Y au repos puis appuyés.
-2. `QUERY_PROBE`, puis `BLTOUCH_DEBUG COMMAND=pin_down` / `pin_up`.
-3. Homing X, puis Y, puis Z, la main près de l'interrupteur.
-4. `PROBE_CALIBRATE`, puis `SAVE_CONFIG`.
-5. `PID_CALIBRATE HEATER=extruder TARGET=210` et `PID_CALIBRATE HEATER=heater_bed TARGET=60`, puis `SAVE_CONFIG`.
-6. Calibration de l'extrudeur, pressure advance, puis input shaping
-   (ADXL345 USB, section commentée dans `printer.cfg`).
+Le guide détaillé, avec le résultat attendu et la correction pour chaque étape,
+est dans **[docs/premier-demarrage.md](docs/premier-demarrage.md)**. En résumé :
 
-Les CSV de `TEST_RESONANCES` arrivent dans `STACK_DIR/resonances`. Analyse :
-```bash
-docker run --rm -v /mnt/user/appdata/klipper-swx1/resonances:/opt/klipper/resonances \
-  -w /opt/klipper --entrypoint bash mkuf/klipper:latest-tools \
-  -c "scripts/calibrate_shaper.py resonances/resonances_x_*.csv -o resonances/shaper_x.png"
-```
+1. Températures au repos.
+2. Chauffe de la buse puis du plateau.
+3. Fins de course X et Y (`QUERY_ENDSTOPS`).
+4. Sens des moteurs (`STEPPER_BUZZ`).
+5. Sonde (`QUERY_PROBE`, `BLTOUCH_DEBUG`).
+6. Homing X, Y, puis Z avec test de sécurité.
+7. `PROBE_CALIBRATE` et `PROBE_ACCURACY`.
+8. `PID_CALIBRATE` buse et plateau.
+9. `BED_MESH_CALIBRATE`.
+10. `rotation_distance` de l'extrudeur.
+11. Première impression.
+12. Pressure advance et input shaping.
 
 ## OrcaSlicer
 
